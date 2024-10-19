@@ -192,7 +192,7 @@
             // Helper function to draw aurora points
             function drawAuroraPoint(x, y, intensity) {
                 context.beginPath();
-                context.arc(x, y, 5, 0, 2 * Math.PI);
+                context.arc(x, y, 8, 0, 2 * Math.PI);
                 context.fillStyle = colorScale(intensity);
                 context.globalAlpha = intensity / 100;
                 context.fill();
