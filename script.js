@@ -29,27 +29,38 @@ let isDataLoaded = false;
 let isInitialized = false;
 let autoRefreshInterval;
 
-function loadData() {
+const autoRefreshTime = 600000/10;
+
+function loadAuroraData() {
     clearInterval(autoRefreshInterval);
-    Promise.all([
-        d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json"),
-        d3.json("https://services.swpc.noaa.gov/json/ovation_aurora_latest.json")
-    ]).then(function ([worldData, aurora]) {
-        world = worldData;
-        auroraData = aurora;
-        isDataLoaded = true;
-        getUserLocation();
-        drawColorbar();
-        updateMetadata();
-        initializeGlobe();
-        resizeMap();
-        requestRender();
-        if (autoRefreshCheckbox.checked) {
-            autoRefreshInterval = setInterval(loadData, 600000); // 10 minutes
-        }
-    }).catch(function(error) {
-        console.error("Error loading data:", error);
-    });
+    return d3.json("https://services.swpc.noaa.gov/json/ovation_aurora_latest.json")
+        .then(function(aurora) {
+            auroraData = aurora;
+            updateMetadata();
+            requestRender();
+            if (autoRefreshCheckbox.checked) {
+                autoRefreshInterval = setInterval(loadAuroraData, autoRefreshTime); // 10 minutes
+            }
+        })
+        .catch(function(error) {
+            console.error("Error loading aurora data:", error);
+        });
+}
+
+function loadData() {
+    d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json")
+        .then(function(worldData) {
+            world = worldData;
+            isDataLoaded = true;
+            getUserLocation();
+            drawColorbar();
+            initializeGlobe();
+            resizeMap();
+            return loadAuroraData();
+        })
+        .catch(function(error) {
+            console.error("Error loading world data:", error);
+        });
 }
 
 function initializeGlobe() {
@@ -335,7 +346,7 @@ function handleMouseOut() {
 
 function toggleAutoRefresh() {
     if (autoRefreshCheckbox.checked) {
-        autoRefreshInterval = setInterval(loadData, 600000); // 10 minutes
+        loadAuroraData();
     } else {
         clearInterval(autoRefreshInterval);
     }
