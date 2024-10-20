@@ -195,17 +195,18 @@ function drawAuroraPoint(x, y, intensity) {
 
 function drawColorbar() {
     const colorbarCanvas = d3.select("#colorbar");
-    colorbarCanvas.attr("width", 200).attr("height", 50);
+    const colorbarWidth = document.getElementById('colorbar-container').clientWidth;
+    colorbarCanvas.attr("width", colorbarWidth).attr("height", 50);
     
     const colorbarContext = colorbarCanvas.node().getContext("2d");
-    const gradient = colorbarContext.createLinearGradient(0, 0, 200, 0);
+    const gradient = colorbarContext.createLinearGradient(0, 0, colorbarWidth, 0);
 
     for (let i = 0; i <= 1; i += 0.01) {
         gradient.addColorStop(i, colorScale(i * 100));
     }
 
     colorbarContext.fillStyle = gradient;
-    colorbarContext.fillRect(0, 0, 200, 20);
+    colorbarContext.fillRect(0, 0, colorbarWidth, 20);
 
     // Add labels
     colorbarContext.fillStyle = "white";
@@ -213,12 +214,11 @@ function drawColorbar() {
     
     colorbarContext.textAlign = "center";
     colorbarContext.fillText("0%", 10, 45);
-    colorbarContext.fillText("25%", 55, 45);
-    colorbarContext.fillText("50%", 100, 45);
-    colorbarContext.fillText("75%", 145, 45);
-    colorbarContext.fillText("100%", 190, 45);
+    colorbarContext.fillText("25%", colorbarWidth * 0.25, 45);
+    colorbarContext.fillText("50%", colorbarWidth * 0.5, 45);
+    colorbarContext.fillText("75%", colorbarWidth * 0.75, 45);
+    colorbarContext.fillText("100%", colorbarWidth - 10, 45);
 }
-
 function updateMetadata() {
     metadataElement.html(`
         Aurora Forecast Map<br>
@@ -230,8 +230,9 @@ function updateMetadata() {
 }
 
 function resizeMap() {
-    width = window.innerWidth;
-    height = window.innerHeight;
+    const container = document.getElementById('container');
+    width = container.clientWidth;
+    height = document.getElementById('map').clientHeight;
     scale = Math.min(width, height) / 2 - 10;
 
     globeCanvas
@@ -330,20 +331,15 @@ function pinchDistance(touches) {
 
 function handleMouseOver() {
     document.getElementById('controls').classList.remove('fade');
-    colorbarContainer.classList.remove('fade');
-    metadataElement.node().classList.remove('fade');
+    document.getElementById('info-section').classList.remove('fade');
 }
 
 function handleMouseOut() {
     document.getElementById('controls').classList.add('fade');
-    if (fadeColorbarCheckbox.checked) {
-        colorbarContainer.classList.add('fade');
-    }
-    if (fadeInfoCheckbox.checked) {
-        metadataElement.node().classList.add('fade');
+    if (fadeColorbarCheckbox.checked || fadeInfoCheckbox.checked) {
+        document.getElementById('info-section').classList.add('fade');
     }
 }
-
 function toggleAutoRefresh() {
     if (autoRefreshCheckbox.checked) {
         loadAuroraData();
