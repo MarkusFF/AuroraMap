@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,11 +18,13 @@
             font-family: Arial, sans-serif;
             overflow: hidden;
         }
+
         #map {
             width: 100vw;
             height: 100vh;
             position: relative;
         }
+
         #controls {
             position: absolute;
             top: 10px;
@@ -33,13 +36,16 @@
             transition: opacity 0.3s ease;
             opacity: 0;
         }
-        select, #show-location {
+
+        select,
+        #show-location {
             background-color: #333;
             color: white;
             border: 1px solid #555;
             padding: 5px;
             margin-bottom: 5px;
         }
+
         #metadata {
             position: absolute;
             bottom: 10px;
@@ -49,6 +55,7 @@
             padding: 5px;
             z-index: 1000;
         }
+
         #colorbar-container {
             position: absolute;
             right: 10px;
@@ -58,12 +65,14 @@
             height: 200px;
             z-index: 1000;
         }
+
         #colorbar {
             width: 80px;
             height: 200px;
         }
     </style>
 </head>
+
 <body>
     <div id="controls">
         <!-- <select id="projection-select">
@@ -113,7 +122,7 @@
             Promise.all([
                 d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json"),
                 d3.json("https://services.swpc.noaa.gov/json/ovation_aurora_latest.json")
-            ]).then(function([worldData, aurora]) {
+            ]).then(function ([worldData, aurora]) {
                 world = worldData;
                 auroraData = aurora;
                 getUserLocation();
@@ -122,7 +131,7 @@
 
         function getUserLocation() {
             if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(function(position) {
+                navigator.geolocation.getCurrentPosition(function (position) {
                     const latitude = position.coords.latitude;
                     const longitude = position.coords.longitude;
                     userLocation = [longitude, latitude];
@@ -132,7 +141,7 @@
                     render();
                     drawColorbar();
                     updateMetadata();
-                }, function(error) {
+                }, function (error) {
                     console.error("Error getting user location:", error);
                     render();
                     drawColorbar();
@@ -151,7 +160,7 @@
 
             // Draw the globe
             context.beginPath();
-            path({type: "Sphere"});
+            path({ type: "Sphere" });
             context.fillStyle = SPHERE_FILL;
             context.fill();
 
@@ -173,13 +182,13 @@
 
                     // Perform visibility filtering only for the orthographic projection
                     // if (selectedProjection === 'Orthographic') {
-                        const [cx, cy] = projection.invert ? projection.invert([width / 2, height / 2]) : [0, 0];
-                        const geoDistance = d3.geoDistance([lon, lat], [cx, cy]);
+                    const [cx, cy] = projection.invert ? projection.invert([width / 2, height / 2]) : [0, 0];
+                    const geoDistance = d3.geoDistance([lon, lat], [cx, cy]);
 
-                        // Visibility filtering based on distance and intensity
-                        if (d[2] > 0 && geoDistance < Math.PI / 2) {
-                            drawAuroraPoint(x, y, d[2]);
-                        }
+                    // Visibility filtering based on distance and intensity
+                    if (d[2] > 0 && geoDistance < Math.PI / 2) {
+                        drawAuroraPoint(x, y, d[2]);
+                    }
                     // } else {
                     //     // For other projections, skip visibility filtering and only check intensity
                     //     if (d[2] > 0) {
@@ -256,14 +265,14 @@
                 .attr("height", 200);
             const colorbarContext = colorbarCanvas.node().getContext("2d");
             const gradient = colorbarContext.createLinearGradient(0, 200, 0, 0);
-            
+
             for (let i = 0; i <= 1; i += 0.01) {
                 gradient.addColorStop(i, colorScale(i * 100));
             }
-            
+
             colorbarContext.fillStyle = gradient;
             colorbarContext.fillRect(0, 0, 20, 200);
-            
+
             // Add labels
             colorbarContext.fillStyle = "white";
             colorbarContext.font = "12px Arial";
@@ -308,74 +317,113 @@
                 .on("drag", dragged);
         }
 
+        // Touch control with zoom
+        let touchZoomStart, touchZoomSize;
+
+        canvas.call(d3.drag()
+            .on("start", (event) => {
+                const p = d3.pointers(event, canvas.node());
+                if (p.length === 2) {
+                    touchZoomStart = pinchDistance(p);
+                    touchZoomSize = projection.scale();
+                }
+            })
+            .on("drag", (event) => {
+                const p = d3.pointers(event, canvas.node());
+                if (p.length === 1) {
+                    // Single touch: rotate
+                    const [x, y] = p[0];
+                    const rotate = projection.rotate();
+                    const k = scale / 200;
+
+                    projection.rotate([
+                        rotate[0] + (x - width / 2) / k,
+                        rotate[1] - (y - height / 2) / k
+                    ]);
+                } else if (p.length === 2) {
+                    // Double touch: zoom
+                    const touchZoom = pinchDistance(p);
+                    const newScale = touchZoomSize * touchZoom / touchZoomStart;
+                    projection.scale(Math.min(Math.max(newScale, 100), 5000));
+                    scale = projection.scale();
+                }
+                render();
+            })
+        );
+
+        function pinchDistance(points) {
+            const dx = points[0][0] - points[1][0];
+            const dy = points[0][1] - points[1][1];
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
         d3.select("#globe").call(drag(projection));
 
-        d3.select("#projection-select").on("change", function() {
-    const selectedProjection = this.value;
+        d3.select("#projection-select").on("change", function () {
+            const selectedProjection = this.value;
 
-    // Update projection based on user selection
-    // if (selectedProjection === "orthographic") {
-        projection = d3.geoOrthographic();
-    // } else if (selectedProjection === "equalEarth") {
-    //     projection = d3.geoEqualEarth();
-    // } else if (selectedProjection === "robinson") {
-    //     projection = d3.geoRobinson();
-    // } else if (selectedProjection === "mollweide") {
-    //     projection = d3.geoMollweide();
-    // }
+            // Update projection based on user selection
+            // if (selectedProjection === "orthographic") {
+            projection = d3.geoOrthographic();
+            // } else if (selectedProjection === "equalEarth") {
+            //     projection = d3.geoEqualEarth();
+            // } else if (selectedProjection === "robinson") {
+            //     projection = d3.geoRobinson();
+            // } else if (selectedProjection === "mollweide") {
+            //     projection = d3.geoMollweide();
+            // }
 
-    // Update projection scale and translation
-    projection.scale(Math.min(width, height) / 2 - 10).translate([width / 2, height / 2]);
+            // Update projection scale and translation
+            projection.scale(Math.min(width, height) / 2 - 10).translate([width / 2, height / 2]);
 
-    // Reset path with new projection
-    path = d3.geoPath().projection(projection).context(context);
+            // Reset path with new projection
+            path = d3.geoPath().projection(projection).context(context);
 
-    // Remove existing drag events and reapply if projection supports rotation
-    d3.select("#globe").on(".drag", null);
-    if (projection.rotate) {
-        d3.select("#globe").call(drag(projection));
-    }
+            // Remove existing drag events and reapply if projection supports rotation
+            d3.select("#globe").on(".drag", null);
+            if (projection.rotate) {
+                d3.select("#globe").call(drag(projection));
+            }
 
-    render();
-    updateMetadata();
-});
+            render();
+            updateMetadata();
+        });
 
         // Zoom functionality
         const zoom = d3.zoom()
             .scaleExtent([0.5, 4])
-            .on("zoom", function(event) {
+            .on("zoom", function (event) {
                 const { transform } = event;
                 projection.scale((Math.min(width, height) / 2 - 10) * transform.k);
                 render();
             });
 
         d3.select("#globe").call(zoom);
-
         function resizeMap() {
             width = window.innerWidth;
             height = window.innerHeight;
-            
+
             d3.select("#globe")
                 .attr("width", width)
                 .attr("height", height);
-            
+
+            scale = Math.min(width, height) / 2 - 10;
             projection
-                .scale(Math.min(width, height) / 2 - 10)
+                .scale(scale)
                 .translate([width / 2, height / 2]);
-            
+
             path = d3.geoPath().projection(projection).context(context);
-            
+
             render();
         }
-
         window.addEventListener('resize', resizeMap);
 
         // Show controls when mouse is over the map window
-        document.body.addEventListener('mouseover', function() {
+        document.body.addEventListener('mouseover', function () {
             document.getElementById('controls').style.opacity = '1';
         });
 
-        document.body.addEventListener('mouseout', function() {
+        document.body.addEventListener('mouseout', function () {
             document.getElementById('controls').style.opacity = '0';
         });
 
@@ -385,4 +433,5 @@
         loadData();
     </script>
 </body>
+
 </html>
