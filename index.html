@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>NASA Aurora data Forecast Map</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://d3js.org/d3-geo-projection.v4.min.js"></script>
@@ -75,12 +75,6 @@
 
 <body>
     <div id="controls">
-        <!-- <select id="projection-select">
-            <option value="orthographic">Orthographic</option>
-            <option value="equalEarth">Equal Earth</option>
-            <option value="robinson">Robinson</option>
-            <option value="mollweide">Mollweide</option>
-        </select><br> -->
         <label>
             <input type="checkbox" id="show-location"> Show my location
         </label>
@@ -96,6 +90,7 @@
     <script>
         let width = window.innerWidth;
         let height = window.innerHeight;
+        let scale = Math.min(width, height) / 2 - 10;
 
         const COUNTRY_FILL = "#90EE9005";
         const SPHERE_FILL = "rgba(0, 0, 0, 0.1)";
@@ -107,7 +102,7 @@
         const context = canvas.node().getContext("2d");
 
         let projection = d3.geoOrthographic()
-            .scale(Math.min(width, height) / 2 - 10)
+            .scale(scale)
             .translate([width / 2, height / 2]);
 
         let path = d3.geoPath().projection(projection).context(context);
@@ -135,9 +130,7 @@
                     const latitude = position.coords.latitude;
                     const longitude = position.coords.longitude;
                     userLocation = [longitude, latitude];
-                    if (projection.rotate) {
-                        projection.rotate([-longitude, -latitude]);
-                    }
+                    projection.rotate([-longitude, -latitude]);
                     render();
                     drawColorbar();
                     updateMetadata();
@@ -175,26 +168,16 @@
             context.strokeStyle = "rgba(255, 255, 255, 1)";
             context.stroke();
 
+            // Draw aurora
             auroraData.coordinates.forEach(d => {
                 const [x, y] = projection(d.slice(0, 2));
                 if (x !== null && y !== null) {
                     const [lon, lat] = d.slice(0, 2);
-
-                    // Perform visibility filtering only for the orthographic projection
-                    // if (selectedProjection === 'Orthographic') {
-                    const [cx, cy] = projection.invert ? projection.invert([width / 2, height / 2]) : [0, 0];
+                    const [cx, cy] = projection.invert([width / 2, height / 2]);
                     const geoDistance = d3.geoDistance([lon, lat], [cx, cy]);
-
-                    // Visibility filtering based on distance and intensity
                     if (d[2] > 0 && geoDistance < Math.PI / 2) {
                         drawAuroraPoint(x, y, d[2]);
                     }
-                    // } else {
-                    //     // For other projections, skip visibility filtering and only check intensity
-                    //     if (d[2] > 0) {
-                    //         drawAuroraPoint(x, y, d[2]);
-                    //     }
-                    // }
                 }
             });
 
@@ -207,23 +190,6 @@
                 context.fill();
             }
 
-            // // Draw aurora
-            // auroraData.coordinates.forEach(d => {
-            //     const [x, y] = projection(d.slice(0, 2));
-            //     if (x !== null && y !== null) {
-            //         const [lon, lat] = d.slice(0, 2);
-            //         const [cx, cy] = projection.invert ? projection.invert([width/2, height/2]) : [0, 0];
-            //         const geoDistance = d3.geoDistance([lon, lat], [cx, cy]);
-            //         if (d[2] > 0 && (projection.clipAngle ? geoDistance < Math.PI / 2 : true)) {
-            //             const intensity = d[2];
-            //             context.beginPath();
-            //             context.arc(x, y, 5, 0, 2 * Math.PI);
-            //             context.fillStyle = colorScale(intensity);
-            //             context.globalAlpha = intensity / 100;
-            //             context.fill();
-            //         }
-            //     }
-            // });
             context.globalAlpha = 1;
 
             // Draw countries
@@ -295,119 +261,66 @@
             `);
         }
 
-        function drag(projection) {
-            let v0, q0, r0;
-
-            function dragstarted(event) {
-                const p = d3.pointers(event, this)[0];
-                v0 = versor.cartesian(projection.invert(p));
-                q0 = versor(r0 = projection.rotate());
-            }
-
-            function dragged(event) {
-                const p = d3.pointers(event, this)[0];
-                const v1 = versor.cartesian(projection.rotate(r0).invert(p));
-                const q1 = versor.multiply(q0, versor.delta(v0, v1));
-                projection.rotate(versor.rotation(q1));
-                render();
-            }
-
-            return d3.drag()
-                .on("start", dragstarted)
-                .on("drag", dragged);
-        }
-
-        // Touch control with zoom
-        let touchZoomStart, touchZoomSize;
+        let v0, r0, q0;
+        let touchZoomStart, touchZoomScale;
 
         canvas.call(d3.drag()
-            .on("start", (event) => {
-                const p = d3.pointers(event, canvas.node());
-                if (p.length === 2) {
-                    touchZoomStart = pinchDistance(p);
-                    touchZoomSize = projection.scale();
-                }
-            })
-            .on("drag", (event) => {
-                const p = d3.pointers(event, canvas.node());
-                if (p.length === 1) {
-                    // Single touch: rotate
-                    const [x, y] = p[0];
-                    const rotate = projection.rotate();
-                    const k = scale / 200;
+            .on("start", dragstarted)
+            .on("drag", dragged));
 
-                    projection.rotate([
-                        rotate[0] + (x - width / 2) / k,
-                        rotate[1] - (y - height / 2) / k
-                    ]);
-                } else if (p.length === 2) {
-                    // Double touch: zoom
-                    const touchZoom = pinchDistance(p);
-                    const newScale = touchZoomSize * touchZoom / touchZoomStart;
-                    projection.scale(Math.min(Math.max(newScale, 100), 5000));
-                    scale = projection.scale();
-                }
+        canvas.node().addEventListener('touchstart', handleTouchStart, { passive: false });
+        canvas.node().addEventListener('touchmove', handleTouchMove, { passive: false });
+
+        function handleTouchStart(event) {
+            event.preventDefault();
+            const touches = event.touches;
+            if (touches.length === 2) {
+                touchZoomStart = pinchDistance(touches);
+                touchZoomScale = projection.scale();
+            }
+        }
+
+        function handleTouchMove(event) {
+            event.preventDefault();
+            const touches = event.touches;
+            if (touches.length === 2) {
+                const touchZoom = pinchDistance(touches);
+                const newScale = touchZoomScale * touchZoom / touchZoomStart;
+                projection.scale(Math.min(Math.max(newScale, 100), 5000));
                 render();
-            })
-        );
+            }
+        }
 
-        function pinchDistance(points) {
-            const dx = points[0][0] - points[1][0];
-            const dy = points[0][1] - points[1][1];
+        function pinchDistance(touches) {
+            const dx = touches[0].clientX - touches[1].clientX;
+            const dy = touches[0].clientY - touches[1].clientY;
             return Math.sqrt(dx * dx + dy * dy);
         }
 
-        d3.select("#globe").call(drag(projection));
+        function dragstarted(event) {
+            const p = d3.pointers(event, this)[0];
+            v0 = versor.cartesian(projection.invert(p));
+            r0 = projection.rotate();
+            q0 = versor(r0);
+        }
 
-        d3.select("#projection-select").on("change", function () {
-            const selectedProjection = this.value;
-
-            // Update projection based on user selection
-            // if (selectedProjection === "orthographic") {
-            projection = d3.geoOrthographic();
-            // } else if (selectedProjection === "equalEarth") {
-            //     projection = d3.geoEqualEarth();
-            // } else if (selectedProjection === "robinson") {
-            //     projection = d3.geoRobinson();
-            // } else if (selectedProjection === "mollweide") {
-            //     projection = d3.geoMollweide();
-            // }
-
-            // Update projection scale and translation
-            projection.scale(Math.min(width, height) / 2 - 10).translate([width / 2, height / 2]);
-
-            // Reset path with new projection
-            path = d3.geoPath().projection(projection).context(context);
-
-            // Remove existing drag events and reapply if projection supports rotation
-            d3.select("#globe").on(".drag", null);
-            if (projection.rotate) {
-                d3.select("#globe").call(drag(projection));
-            }
-
+        function dragged(event) {
+            const p = d3.pointers(event, this)[0];
+            const v1 = versor.cartesian(projection.rotate(r0).invert(p));
+            const q1 = versor.multiply(q0, versor.delta(v0, v1));
+            projection.rotate(versor.rotation(q1));
             render();
-            updateMetadata();
-        });
+        }
 
-        // Zoom functionality
-        const zoom = d3.zoom()
-            .scaleExtent([0.5, 4])
-            .on("zoom", function (event) {
-                const { transform } = event;
-                projection.scale((Math.min(width, height) / 2 - 10) * transform.k);
-                render();
-            });
-
-        d3.select("#globe").call(zoom);
         function resizeMap() {
             width = window.innerWidth;
             height = window.innerHeight;
+            scale = Math.min(width, height) / 2 - 10;
 
             d3.select("#globe")
                 .attr("width", width)
                 .attr("height", height);
 
-            scale = Math.min(width, height) / 2 - 10;
             projection
                 .scale(scale)
                 .translate([width / 2, height / 2]);
@@ -416,6 +329,7 @@
 
             render();
         }
+
         window.addEventListener('resize', resizeMap);
 
         // Show controls when mouse is over the map window
